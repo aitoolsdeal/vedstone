@@ -67,11 +67,38 @@ NAKSHATRA_LORDS = {
 }
 
 INTENTION_BOOSTS = {
-    "peace": {"Moon": 2, "Jupiter": 2, "Venus": 1},
-    "confidence": {"Sun": 2, "Mars": 2, "Jupiter": 1},
-    "clarity": {"Mercury": 2, "Moon": 1},
-    "success": {"Jupiter": 2, "Sun": 2, "Mercury": 1},
-    "love": {"Venus": 2, "Moon": 2},
+    "success": {
+        "Jupiter": 2,
+        "Sun": 2,
+        "Mars": 1
+    },
+
+    "love_marriage": {
+        "Venus": 2,
+        "Moon": 2,
+        "Jupiter": 1
+    },
+
+    "peace": {
+        "Moon": 2,
+        "Jupiter": 2
+    },
+
+    "health": {
+        "Sun": 2,
+        "Moon": 1,
+        "Mars": 1
+    },
+
+    "clarity": {
+        "Mercury": 2,
+        "Moon": 1
+    },
+
+    "spiritual_growth": {
+        "Jupiter": 2,
+        "Moon": 1
+    }
 }
 
 PLANET_STONES = {
