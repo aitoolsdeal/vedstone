@@ -13,11 +13,8 @@ COPY . .
 # Create Skyfield cache directory
 RUN mkdir -p /root/.skyfield
 
-# Pre-download astronomy data during Docker build
-# Avoid heredoc because Coolify may inject ARG lines into multiline blocks
+# Pre-download main astronomy ephemeris
 RUN python -c "from skyfield.api import load; print('Downloading de421.bsp...'); load('de421.bsp')"
-
-RUN python -c "from skyfield.api import load; print('Downloading hip_main.dat...'); load.open(load.build_url('hip_main.dat'))"
 
 RUN python -c "print('Astronomy files ready.')"
 
