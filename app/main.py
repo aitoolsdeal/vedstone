@@ -20,6 +20,12 @@ class BirthDetails(BaseModel):
     place: str
     intention: Optional[str] = None
 
+    # New fields from Lovable/Supabase city autocomplete.
+    # If these are present, we skip Geopy completely.
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    timezone: Optional[str] = None
+
 
 SIGN_LORDS = {
     "Aries": "Mars",
@@ -70,35 +76,30 @@ INTENTION_BOOSTS = {
     "success": {
         "Jupiter": 2,
         "Sun": 2,
-        "Mars": 1
+        "Mars": 1,
     },
-
     "love_marriage": {
         "Venus": 2,
         "Moon": 2,
-        "Jupiter": 1
+        "Jupiter": 1,
     },
-
     "peace": {
         "Moon": 2,
-        "Jupiter": 2
+        "Jupiter": 2,
     },
-
     "health": {
         "Sun": 2,
         "Moon": 1,
-        "Mars": 1
+        "Mars": 1,
     },
-
     "clarity": {
         "Mercury": 2,
-        "Moon": 1
+        "Moon": 1,
     },
-
     "spiritual_growth": {
         "Jupiter": 2,
-        "Moon": 1
-    }
+        "Moon": 1,
+    },
 }
 
 PLANET_STONES = {
@@ -148,7 +149,8 @@ FALLBACK_ORDER = {
 
 
 def geocode_place(place: str):
-    location = geolocator.geocode(place)
+    location = geolocator.geocode(place, timeout=8)
+
     if not location:
         raise HTTPException(status_code=400, detail=f"Could not find birthplace: {place}")
 
@@ -162,10 +164,34 @@ def geocode_place(place: str):
     return lat, lon, timezone_name
 
 
+def resolve_location(details: BirthDetails):
+    """
+    Fast path:
+    If Lovable/Supabase sends latitude, longitude, and timezone,
+    use them directly and skip Geopy.
+
+    Fallback:
+    If coordinates are missing, use Geopy.
+    """
+    if (
+        details.latitude is not None
+        and details.longitude is not None
+        and details.timezone
+    ):
+        return details.latitude, details.longitude, details.timezone, True
+
+    lat, lon, timezone_name = geocode_place(details.place)
+    return lat, lon, timezone_name, False
+
+
 def get_timezone_offset_hours(dt: datetime, timezone_name: str) -> float:
     tz = ZoneInfo(timezone_name)
     localized = dt.replace(tzinfo=tz)
     offset = localized.utcoffset()
+
+    if offset is None:
+        return 5.5
+
     return offset.total_seconds() / 3600
 
 
@@ -202,7 +228,7 @@ def health():
 @app.post("/recommend-stone")
 def recommend_stone(details: BirthDetails):
     try:
-        lat, lon, timezone_name = geocode_place(details.place)
+        lat, lon, timezone_name, used_cached_location = resolve_location(details)
 
         # MVP choice: no birth time.
         # Use default local noon for Moon sign + Nakshatra calculation.
@@ -252,22 +278,27 @@ def recommend_stone(details: BirthDetails):
 
         sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
-        display_planet, internal_primary_planet, internal_primary_score, displayed_as_alternative = pick_display_planet(sorted_scores)
+        (
+            display_planet,
+            internal_primary_planet,
+            internal_primary_score,
+            displayed_as_alternative,
+        ) = pick_display_planet(sorted_scores)
 
         stone_data = PLANET_STONES[display_planet]
+
         max_possible_score = 10
         confidence_score = min(round(sorted_scores[0][1] / max_possible_score, 2), 0.95)
 
         explanation = (
-            f"Based on your birth date and birthplace, your Moon sign is {moon_sign} "
-            f"and your Nakshatra is {nakshatra}. This creates a strong {internal_primary_planet} influence. "
+            f"Based on your birth details and intention, one stone stood out. "
             f"For a balanced daily-wear gemstone, we recommend {stone_data['stone']}, "
             f"traditionally associated with {stone_data['meaning']}."
         )
 
         if displayed_as_alternative:
             explanation = (
-                f"Your birth profile shows a strong transformational {internal_primary_planet} influence. "
+                f"Your birth profile shows a strong transformational influence. "
                 f"For gentle daily alignment, we recommend {stone_data['stone']}, "
                 f"traditionally associated with {stone_data['meaning']}."
             )
@@ -291,9 +322,13 @@ def recommend_stone(details: BirthDetails):
                 "latitude": lat,
                 "longitude": lon,
                 "timezone": timezone_name,
-                "used_default_time": "12:00"
-            }
+                "used_default_time": "12:00",
+                "used_cached_location": used_cached_location,
+            },
         }
+
+    except HTTPException:
+        raise
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
